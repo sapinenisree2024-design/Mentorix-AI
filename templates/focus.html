@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+<title>AI Focus Detection System</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+
+body{
+    background:#0f172a;
+    color:white;
+    font-family:Arial;
+    margin:0;
+}
+
+.topbar{
+    display:flex;
+    justify-content:space-between;
+    padding:15px 20px;
+    background:#111827;
+    position:sticky;
+    top:0;
+}
+
+.dashboard{
+    width:92%;
+    margin:auto;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:20px;
+}
+
+.card{
+    background:#1e293b;
+    padding:20px;
+    border-radius:15px;
+}
+
+video{
+    width:100%;
+    border-radius:15px;
+    border:4px solid #22c55e;
+    transform:scaleX(-1);
+}
+
+video.distracted{
+    border:4px solid red !important;
+    box-shadow:0 0 20px red;
+}
+
+button{
+    padding:10px 15px;
+    margin:5px;
+    border:none;
+    border-radius:10px;
+    background:#334155;
+    color:white;
+    cursor:pointer;
+}
+
+.analyticsGrid{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:10px;
+}
+
+.statCard{
+    background:#0f172a;
+    padding:15px;
+    border-radius:12px;
+    text-align:center;
+}
+
+#focusBar{
+    width:0%;
+    height:20px;
+    background:#22c55e;
+    border-radius:10px;
+}
+
+canvas{
+    width:100% !important;
+    height:300px !important;
+}
+
+.backBtn{
+    width:92%;
+    margin:30px auto;
+    display:block;
+    padding:15px;
+    border:none;
+    border-radius:12px;
+    background:#2563eb;
+    color:white;
+    font-size:18px;
+    cursor:pointer;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="topbar">
+<div>🧠 AI Proctor Mode</div>
+<div id="liveFocus">Focus: 0%</div>
+</div>
+
+<h1 style="text-align:center;">AI Focus Detection System</h1>
+
+<div class="dashboard">
+
+<div>
+
+<div class="card">
+<h2>📷 Live Camera</h2>
+<video id="video" autoplay playsinline muted></video>
+</div>
+
+<div class="card">
+<h2>⏱ Study Timer</h2>
+
+<h1 id="timer">00:00:00</h1>
+
+<button onclick="startTimer()">Start</button>
+<button onclick="pauseTimer()">Pause</button>
+<button onclick="resumeTimer()">Resume</button>
+<button onclick="stopTimer()">Stop</button>
+
+</div>
+
+</div>
+
+<div>
+
+<div class="card">
+<h2>📊 Analytics</h2>
+
+<div class="analyticsGrid">
+<div class="statCard"><h3 id="focusPercent">0%</h3><p>Focus</p></div>
+<div class="statCard"><h3 id="focusScoreCard">0</h3><p>Score</p></div>
+<div class="statCard"><h3 id="studyHours">0 mins</h3><p>Study</p></div>
+</div>
+
+<br>
+<div id="focusBar"></div>
+
+</div>
+
+<div class="card">
+<h2>📈 Weekly Focus</h2>
+<canvas id="focusChart"></canvas>
+</div>
+
+<div class="card">
+<h2>🕒 Weekly Study</h2>
+<canvas id="studyChart"></canvas>
+</div>
+
+</div>
+
+</div>
+
+<button class="backBtn" onclick="goDashboard()">
+⬅ Back To Dashboard
+</button>
+
+<script>
+
+/* ================= USER UNIQUE STORAGE ================= */
+
+const username = "{{ session['user'] }}";
+
+const focusKey = "focusHistory_" + username;
+const studyKey = "weeklyStudy_" + username;
+const secondsKey = "savedSeconds_" + username;
+const dateKey = "savedDate_" + username;
+const startKey = "startTime_" + username;
+
+
+/* ================= CAMERA ================= */
+
+const video = document.getElementById("video");
+
+navigator.mediaDevices.getUserMedia({
+video:true,
+audio:false
+})
+.then(s => video.srcObject = s);
+
+
+/* ================= BACK BUTTON ================= */
+
+function goDashboard(){
+
+window.history.back();
+
+}
+
+
+/* ================= AUDIO ================= */
+
+let voiceInterval = null;
+
+function playDistractedVoice(){
+
+let msg = new SpeechSynthesisUtterance(
+" You are distracted , Focus on your studies"
+);
+
+msg.rate = 1;
+msg.pitch = 1;
+msg.volume = 1;
+
+window.speechSynthesis.cancel();
+window.speechSynthesis.speak(msg);
+
+}
+
+
+/* ================= STORAGE ================= */
+
+let timerInterval = null;
+let timerRunning = false;
+
+let startTime =
+Number(localStorage.getItem(startKey)) || null;
+
+let savedSeconds =
+Number(localStorage.getItem(secondsKey)) || 0;
+
+let weeklyStudy =
+JSON.parse(localStorage.getItem(studyKey)) ||
+[0,0,0,0,0,0,0];
+
+let weeklyFocus =
+JSON.parse(localStorage.getItem(focusKey)) ||
+[0,0,0,0,0,0,0];
+
+let dayIndex = new Date().getDay();
+
+dayIndex = dayIndex === 0 ? 6 : dayIndex - 1;
+
+
+/* ================= NEW DAY RESET ================= */
+
+let todayDate = new Date().toDateString();
+
+let savedDate =
+localStorage.getItem(dateKey);
+
+if(savedDate !== todayDate){
+
+savedSeconds = 0;
+
+weeklyStudy[dayIndex] = 0;
+
+localStorage.setItem(
+dateKey,
+todayDate
+);
+
+localStorage.setItem(
+secondsKey,
+0
+);
+
+localStorage.setItem(
+studyKey,
+JSON.stringify(weeklyStudy)
+);
+
+}
+
+
+/* ================= UPDATE TIMER ================= */
+
+function updateTimer(){
+
+let session = timerRunning
+? Math.floor((Date.now() - startTime)/1000)
+: 0;
+
+let total = savedSeconds + session;
+
+let h = Math.floor(total/3600);
+let m = Math.floor((total%3600)/60);
+let s = total%60;
+
+document.getElementById("timer").innerText =
+String(h).padStart(2,'0') + ":" +
+String(m).padStart(2,'0') + ":" +
+String(s).padStart(2,'0');
+
+let minutes = Math.floor(total/60);
+
+document.getElementById("studyHours").innerText =
+minutes + " mins";
+
+/* GRAPH TOTAL STUDY */
+
+weeklyStudy[dayIndex] = minutes;
+
+studyChart.data.datasets[0].data = [...weeklyStudy];
+
+studyChart.update()
+
+localStorage.setItem(
+studyKey,
+JSON.stringify(weeklyStudy)
+);
+
+}
+
+
+/* ================= TIMER CONTROLS ================= */
+
+function startTimer(){
+
+if(timerRunning) return;
+
+timerRunning = true;
+
+startTime = Date.now();
+
+localStorage.setItem(
+startKey,
+startTime
+);
+
+clearInterval(timerInterval);
+
+timerInterval = setInterval(updateTimer,1000);
+
+}
+
+function pauseTimer(){
+
+if(!timerRunning) return;
+
+timerRunning = false;
+
+savedSeconds += Math.floor(
+(Date.now() - startTime)/1000
+);
+
+localStorage.setItem(
+secondsKey,
+savedSeconds
+);
+
+localStorage.removeItem(
+startKey
+);
+
+}
+
+function resumeTimer(){
+
+if(timerRunning) return;
+
+timerRunning = true;
+
+startTime = Date.now();
+
+localStorage.setItem(
+startKey,
+startTime
+);
+
+clearInterval(timerInterval);
+
+timerInterval = setInterval(updateTimer,1000);
+
+}
+
+function stopTimer(){
+
+if(startTime){
+
+savedSeconds += Math.floor(
+(Date.now() - startTime)/1000
+);
+
+}
+
+timerRunning = false;
+
+startTime = null;
+
+localStorage.setItem(
+secondsKey,
+savedSeconds
+);
+
+localStorage.removeItem(
+startKey
+);
+
+clearInterval(timerInterval);
+
+timerInterval = null;
+
+/* SAVE GRAPH */
+
+updateTimer();
+
+/* DISPLAY RESET ONLY */
+
+document.getElementById("timer").innerText =
+"00:00:00";
+
+}
+
+
+/* ================= CHARTS ================= */
+
+const focusChart = new Chart(
+document.getElementById("focusChart"),
+{
+type:"line",
+data:{
+labels:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+datasets:[{
+label:"Focus",
+data:weeklyFocus,
+borderColor:"#22c55e",
+backgroundColor:"rgba(34,197,94,0.2)",
+fill:true,
+tension:0.4
+}]
+}
+});
+
+const studyChart = new Chart(
+document.getElementById("studyChart"),
+{
+type:"bar",
+data:{
+labels:["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
+datasets:[{
+label:"Study Minutes",
+data:weeklyStudy,
+backgroundColor:"#3b82f6"
+}]
+}
+});
+
+
+/* ================= AUTO CONTINUE TIMER ================= */
+
+let savedStart =
+localStorage.getItem(startKey);
+
+if(savedStart){
+
+timerRunning = true;
+
+startTime = Number(savedStart);
+
+timerInterval =
+setInterval(updateTimer,1000);
+
+}
+
+
+/* ================= FOCUS SYSTEM ================= */
+
+let lastMovement = Date.now();
+
+let focusScore = 0;
+let focusedTime = 0;
+let distractedTime = 0;
+let lastFocusValue = 0;
+
+document.addEventListener(
+"mousemove",
+()=> lastMovement = Date.now()
+);
+
+document.addEventListener(
+"keydown",
+()=> lastMovement = Date.now()
+);
+
+document.addEventListener(
+"visibilitychange",
+()=>{
+
+if(document.hidden){
+lastMovement = 0;
+}
+
+}
+);
+
+
+/* ================= MAIN DETECTION ================= */
+
+setInterval(()=>{
+
+let inactive =
+(Date.now() - lastMovement)/1000;
+
+let distracted = inactive > 5;
+
+if(distracted){
+
+focusScore =
+Math.max(0, focusScore - 1);
+
+distractedTime++;
+
+video.classList.add("distracted");
+
+if(!voiceInterval){
+
+playDistractedVoice();
+
+voiceInterval = setInterval(()=>{
+
+playDistractedVoice();
+
+},3000);
+
+}
+
+}else{
+
+focusScore =
+Math.min(100, focusScore + 1);
+
+focusedTime++;
+
+video.classList.remove("distracted");
+
+if(voiceInterval){
+
+clearInterval(voiceInterval);
+
+voiceInterval = null;
+
+}
+
+window.speechSynthesis.cancel();
+
+}
+
+let total =
+focusedTime + distractedTime;
+
+let rawFocus = total
+? Math.round((focusedTime/total)*100)
+: 0;
+
+lastFocusValue = Math.round(
+(lastFocusValue*0.7) +
+(rawFocus*0.3)
+);
+
+let focusPercent = lastFocusValue;
+
+
+document.getElementById("focusPercent").innerText =
+focusPercent + "%";
+
+document.getElementById("focusScoreCard").innerText =
+focusScore;
+
+document.getElementById("liveFocus").innerText =
+"Focus: " + focusPercent + "%";
+
+document.getElementById("focusBar").style.width =
+focusPercent + "%";
+fetch("/save_focus", {
+    method: "POST",
+    headers: {
+        "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+        score: focusPercent
+    })
+});
+
+weeklyFocus[dayIndex] = focusPercent;
+
+focusChart.data.datasets[0].data =
+[...weeklyFocus];
+
+focusChart.update();
+
+localStorage.setItem(
+focusKey,
+JSON.stringify(weeklyFocus)
+);
+
+},2000);
+
+</script>
+
+</body>
+</html>

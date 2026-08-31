@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>History</title>
+
+<style>
+
+body{
+    margin:0;
+    font-family:Arial;
+    background:#0f172a;
+    color:white;
+    text-align:center;
+}
+
+h1{
+    color:#60a5fa;
+    margin-top:20px;
+}
+
+.card{
+    background:#1e293b;
+    margin:15px auto;
+    padding:15px;
+    width:420px;
+    border-radius:12px;
+    border:1px solid rgba(255,255,255,0.1);
+    position:relative;
+    text-align:left;
+}
+
+.delete-btn{
+    position:absolute;
+    top:10px;
+    right:10px;
+    background:#ef4444;
+    color:white;
+    border:none;
+    padding:5px 10px;
+    border-radius:6px;
+    cursor:pointer;
+    font-size:12px;
+}
+
+.delete-btn:hover{
+    background:#dc2626;
+}
+
+.goal{
+    font-size:18px;
+    color:#facc15;
+    margin-bottom:6px;
+}
+
+.time{
+    font-size:13px;
+    color:#a7f3d0;
+}
+
+.badge{
+    display:inline-block;
+    background:#22c55e;
+    color:black;
+    padding:3px 8px;
+    border-radius:8px;
+    font-size:12px;
+    margin-bottom:8px;
+}
+
+.back-btn{
+    margin-top:20px;
+    padding:10px 15px;
+    border:none;
+    border-radius:10px;
+    background:#3b82f6;
+    color:white;
+    cursor:pointer;
+    font-weight:bold;
+}
+
+</style>
+</head>
+
+<body>
+
+<h1>📜 Your Goal History</h1>
+
+{% if history|length == 0 %}
+<p>No history found</p>
+{% endif %}
+
+{% for item in history %}
+<div class="card">
+
+    <a href="/delete_goal/{{ item[0] }}">
+        <button class="delete-btn">DELETE</button>
+    </a>
+
+    <div class="badge">GOAL</div>
+
+    <div class="goal">🎯 {{ item[1] }}</div>
+
+    <div class="time">⏱ {{ item[2] }}</div>
+
+</div>
+{% endfor %}
+
+<a href="/dashboard">
+    <button class="back-btn">⬅ Back</button>
+</a>
+
+</body>
+</html>
